@@ -1763,8 +1763,9 @@ impl ClientShellState {
                 .is_some_and(crate::selection::Selection::finish);
             if copied && self.config.copy_on_select {
                 self.request_selection_copy(outcome, true);
-                // With clipboard shortcuts the copied text stays highlighted, so
-                // Ctrl+C reads as "copy this" rather than as an interrupt.
+                // With clipboard shortcuts the copied text stays highlighted:
+                // the person sees what was copied, and ctrl+alt+c can copy it
+                // again. Typing or a click clears it.
                 if !self.config.clipboard_shortcuts {
                     self.selection = None;
                 }

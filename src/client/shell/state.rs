@@ -930,7 +930,7 @@ pub(crate) struct ClientShellState {
     pub(super) selection_autoscroll: Option<ClientSelectionAutoscroll>,
     pub(super) selection_autoscroll_deadline: Option<std::time::Instant>,
     pub(super) selection_highlight_clear_deadline: Option<std::time::Instant>,
-    /// Reads the system clipboard's text for Ctrl+V and the menu's Paste.
+    /// Reads the system clipboard's text for ctrl+alt+p and the menu's Paste.
     /// A field so tests can stand in for the clipboard.
     pub(super) read_clipboard_text: fn() -> Option<String>,
     pub(super) word_selection_gesture: Option<ClientWordSelection>,

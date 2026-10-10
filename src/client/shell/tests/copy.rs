@@ -325,7 +325,7 @@ fn retained_mouse_selection_survives_output_and_copies_without_terminal_input() 
 
     let copy = state.handle_raw_events(vec![RawInputEvent::Key(crate::input::TerminalKey::new(
         KeyCode::Char('c'),
-        KeyModifiers::CONTROL,
+        KeyModifiers::CONTROL | KeyModifiers::ALT,
     ))]);
     assert!(state.selection.is_none());
     assert!(matches!(
@@ -433,7 +433,7 @@ fn keyboard_copy_mode_owns_cursor_selection_copy_and_scroll_restore() {
     assert!(enter.actions.is_empty());
 
     state.handle_raw_events(vec![RawInputEvent::Key(crate::input::TerminalKey::new(
-        KeyCode::Char('b'),
+        KeyCode::Char('6'),
         KeyModifiers::CONTROL,
     ))]);
     assert_eq!(state.mode, ClientShellMode::Prefix);
@@ -539,7 +539,7 @@ fn keyboard_selections_survive_output_and_copy_live_ranges() {
         });
         state.set_pane_surface(pane_surface.clone());
         state.compose(106, 20).expect("composed frame");
-        state.handle_input_bytes(b"\x02[");
+        state.handle_input_bytes(b"\x1e[");
         state.handle_input_bytes(selection_key);
         state.handle_input_bytes(b"k");
         let range = state
@@ -590,7 +590,7 @@ fn empty_keyboard_anchor_keeps_search_fallback_revision_guard() {
     });
     state.set_pane_surface(pane_surface);
     state.compose(106, 20).expect("composed frame");
-    state.handle_input_bytes(b"\x02[");
+    state.handle_input_bytes(b"\x1e[");
     let search = state.handle_input_bytes(b"/LIVE\r");
     let [ClientShellAction::Endpoint { request, .. }] = &search.actions[..] else {
         panic!("search request");
@@ -630,7 +630,7 @@ fn keyboard_selection_does_not_return_after_resize_or_screen_switch() {
         });
         state.set_pane_surface(pane_surface.clone());
         state.compose(106, 20).expect("composed frame");
-        state.handle_input_bytes(b"\x02[");
+        state.handle_input_bytes(b"\x1e[");
         state.handle_input_bytes(b"vk");
         assert!(state.selection.is_some());
         pane_surface.surface_revision += 1;
@@ -1892,7 +1892,7 @@ fn copy_mode_survives_mouse_motion_and_parks_across_focus_changes() {
     assert!(state.selection.is_some());
     let copy = state.handle_raw_events(vec![RawInputEvent::Key(crate::input::TerminalKey::new(
         KeyCode::Char('c'),
-        KeyModifiers::CONTROL,
+        KeyModifiers::CONTROL | KeyModifiers::ALT,
     ))]);
     assert!(copy.requests.is_empty());
     assert!(
@@ -1951,7 +1951,10 @@ fn retained_selection_copy_suppresses_key_repeats() {
     assert!(selection.finish());
     state.selection = Some(selection);
 
-    let key = crate::input::TerminalKey::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+    let key = crate::input::TerminalKey::new(
+        KeyCode::Char('c'),
+        KeyModifiers::CONTROL | KeyModifiers::ALT,
+    );
     let press = state.handle_raw_events(vec![RawInputEvent::Key(key.clone())]);
     assert!(press.actions.iter().any(|action| matches!(
         action,

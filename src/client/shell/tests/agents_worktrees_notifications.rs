@@ -1165,7 +1165,7 @@ fn navigate_mode_selects_workspace_locally_then_focuses_by_stable_id() {
     state.set_snapshot(Box::new(snapshot));
     state.set_pane_surface(surface());
 
-    assert!(state.handle_input_bytes(&[0x02]).actions.is_empty());
+    assert!(state.handle_input_bytes(&[0x1e]).actions.is_empty());
     let enter_navigate = state.handle_input_bytes(b"w");
     assert!(enter_navigate.repaint);
     assert_eq!(state.mode, ClientShellMode::Navigate);

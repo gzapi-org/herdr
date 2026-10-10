@@ -370,7 +370,7 @@ fn copy_search_owns_prefix_but_parked_prompt_does_not_steal_input() {
     assert_eq!(editor(&mut state).as_str(), "aXb");
     state.mode = ClientShellMode::Copy;
     press(&mut state, KeyCode::Esc, KeyModifiers::NONE);
-    press(&mut state, KeyCode::Char('b'), KeyModifiers::CONTROL);
+    press(&mut state, KeyCode::Char('6'), KeyModifiers::CONTROL);
     assert_eq!(state.mode, ClientShellMode::Prefix);
 }
 

@@ -5778,13 +5778,13 @@ fn client_page_key(
 }
 
 #[test]
-fn client_plain_page_keys_scroll_shell_transcript_by_pane_height() {
+fn client_alt_page_keys_scroll_shell_transcript_by_pane_height() {
     with_terminal_attach_runtime(b"", 0, |runtime, input_rx| {
         apply_client_pane_input_events(
             runtime,
             &[client_page_key(
                 crate::protocol::ClientKeyCode::PageUp,
-                crossterm::event::KeyModifiers::empty(),
+                crossterm::event::KeyModifiers::ALT,
                 crate::protocol::ClientKeyKind::Press,
             )],
         )
@@ -5801,7 +5801,7 @@ fn client_plain_page_keys_scroll_shell_transcript_by_pane_height() {
             runtime,
             &[client_page_key(
                 crate::protocol::ClientKeyCode::PageUp,
-                crossterm::event::KeyModifiers::empty(),
+                crossterm::event::KeyModifiers::ALT,
                 crate::protocol::ClientKeyKind::Release,
             )],
         )
@@ -5818,7 +5818,7 @@ fn client_plain_page_keys_scroll_shell_transcript_by_pane_height() {
             runtime,
             &[client_page_key(
                 crate::protocol::ClientKeyCode::PageDown,
-                crossterm::event::KeyModifiers::empty(),
+                crossterm::event::KeyModifiers::ALT,
                 crate::protocol::ClientKeyKind::Press,
             )],
         )
@@ -5831,6 +5831,33 @@ fn client_plain_page_keys_scroll_shell_transcript_by_pane_height() {
             0
         );
         assert!(input_rx.try_recv().is_err(), "page keys reached the shell");
+    });
+}
+
+// gzapi-org's fork: plain PageUp/PageDown are the harness's, never herdr's.
+#[test]
+fn client_plain_page_keys_reach_the_pane() {
+    with_terminal_attach_runtime(b"", 0, |runtime, input_rx| {
+        apply_client_pane_input_events(
+            runtime,
+            &[client_page_key(
+                crate::protocol::ClientKeyCode::PageUp,
+                crossterm::event::KeyModifiers::empty(),
+                crate::protocol::ClientKeyKind::Press,
+            )],
+        )
+        .expect("pane PageUp");
+        assert!(
+            input_rx.try_recv().is_ok(),
+            "plain PageUp was not forwarded"
+        );
+        assert_eq!(
+            runtime
+                .scroll_metrics()
+                .expect("scroll metrics")
+                .offset_from_bottom,
+            0
+        );
     });
 }
 
@@ -5859,19 +5886,22 @@ fn client_page_keys_forward_when_modified_or_owned_by_application() {
         );
     });
 
+    // herdr's alt+PageUp goes to an application that owns its page keys.
     with_terminal_attach_runtime(b"\x1b[?1h", 0, |runtime, input_rx| {
         apply_client_pane_input_events(
             runtime,
             &[client_page_key(
                 crate::protocol::ClientKeyCode::PageUp,
-                crossterm::event::KeyModifiers::empty(),
+                crossterm::event::KeyModifiers::ALT,
                 crate::protocol::ClientKeyKind::Press,
             )],
         )
-        .expect("application PageUp");
+        .expect("application alt+PageUp");
         assert_eq!(
-            input_rx.try_recv().expect("forwarded application PageUp"),
-            Bytes::from_static(b"\x1b[5~")
+            input_rx
+                .try_recv()
+                .expect("forwarded application alt+PageUp"),
+            Bytes::from_static(b"\x1b[5;3~")
         );
         assert_eq!(
             runtime

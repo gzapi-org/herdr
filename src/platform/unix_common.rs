@@ -780,7 +780,7 @@ mod shared_ssh_tests {
 }
 
 /// How long one clipboard text read may take, across every command it tries.
-/// The read runs on the client's input path (Ctrl+V, the pane menu's Paste,
+/// The read runs on the client's input path (ctrl+alt+p, the pane menu's Paste,
 /// field paste), and a selection owner that stops answering would otherwise
 /// freeze the client until it recovered.
 pub(super) const CLIPBOARD_TEXT_READ_BUDGET: std::time::Duration =

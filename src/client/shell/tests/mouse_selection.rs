@@ -371,7 +371,7 @@ fn disabled_mouse_chrome_keeps_tab_wheel_but_removes_split_drag_hits() {
 }
 
 #[test]
-fn with_clipboard_shortcuts_a_copied_word_stays_selected_for_ctrl_c() {
+fn with_clipboard_shortcuts_a_copied_word_stays_selected_for_ctrl_alt_c() {
     let mut state = word_drag_state_with(true, true);
     let initial = start_word_drag(&mut state);
     let release = MouseEventKind::Up(MouseButton::Left);

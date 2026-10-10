@@ -5,9 +5,31 @@ use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 
 const LOCAL_INPUT_SOURCE: u8 = 0;
 
+/// gzapi-org's fork: herdr's copy is ctrl+alt+c (or cmd+c where the host
+/// forwards it), never ctrl+c, which always reaches the pane's harness. No
+/// harness binds ctrl+alt+c (client shell tests, `harness_keys`).
 fn is_retained_selection_copy_key(key: &crate::input::TerminalKey) -> bool {
     matches!(key.code, KeyCode::Char('c' | 'C'))
-        && matches!(key.modifiers, KeyModifiers::CONTROL | KeyModifiers::SUPER)
+        && matches!(
+            key.modifiers,
+            m if m == KeyModifiers::CONTROL | KeyModifiers::ALT || m == KeyModifiers::SUPER
+        )
+}
+
+/// gzapi-org's fork: herdr's paste into a pane is ctrl+alt+p (or cmd+v on
+/// macOS), never ctrl+v, which the harness reads itself (images included).
+/// Not ctrl+alt+v: Codex binds it to paste an image.
+fn is_pane_paste_key_for_platform(key: &crate::input::TerminalKey, macos: bool) -> bool {
+    key.generated_text.as_deref().is_none_or(str::is_empty)
+        && (matches!(key.code, KeyCode::Char('p' | 'P'))
+            && key.modifiers == KeyModifiers::CONTROL | KeyModifiers::ALT
+            || macos
+                && matches!(key.code, KeyCode::Char('v' | 'V'))
+                && key.modifiers.difference(KeyModifiers::SHIFT) == KeyModifiers::SUPER)
+}
+
+fn is_pane_paste_key(key: &crate::input::TerminalKey) -> bool {
+    is_pane_paste_key_for_platform(key, cfg!(target_os = "macos"))
 }
 
 /// True for Ctrl+[, the terminal-level equivalent of Esc.
@@ -539,30 +561,31 @@ impl ClientShellState {
         }
     }
 
-    /// Ctrl+V with text on the clipboard pastes it into the focused pane, as
-    /// the outer terminal's own paste would. Without text the key is not
-    /// consumed, so a pane app that reads Ctrl+V itself (an agent's image
-    /// paste, vim's block selection) still gets it. A configured Ctrl+V
-    /// binding was resolved before this and wins.
+    /// ctrl+alt+p with text on the clipboard pastes it into the focused pane,
+    /// as the outer terminal's own paste would. ctrl+v is never taken: a pane
+    /// app reads it itself (an agent's image paste, vim's block selection). A
+    /// configured binding on the same key was resolved before this and wins.
     fn paste_clipboard_into_focused_pane(
         &mut self,
         key: &crate::input::TerminalKey,
         outcome: &mut ClientShellInput,
     ) -> bool {
-        if !self.config.clipboard_shortcuts || !is_modal_paste_shortcut(key) {
+        if !self.config.clipboard_shortcuts || !is_pane_paste_key(key) {
             return false;
         }
-        // Hosts that report key events send a held Ctrl+V as one press and
+        // Hosts that report key events send a held key as one press and
         // repeats: the repeats are swallowed, so it pastes once. A legacy host
         // sends repeated presses, which paste again, as its own paste would.
         if key.kind == KeyEventKind::Repeat {
             return true;
         }
+        // The key is herdr's: with no pane or no text it does nothing, rather
+        // than reach the pane as a key no harness expects.
         let Some(pane_id) = self.focused_pane_id() else {
-            return false;
+            return true;
         };
         let Some(text) = (self.read_clipboard_text)().filter(|text| !text.is_empty()) else {
-            return false;
+            return true;
         };
         super::push_target_event(
             ClientInputTarget::Pane(pane_id),
@@ -669,20 +692,39 @@ impl ClientShellState {
             return None;
         }
         self.word_selection_gesture = None;
-        if self.mode != ClientShellMode::Copy
+        // Not in prefix mode, where the key is the prefix command's, nor in
+        // copy mode, which copies its own way. In terminal mode the key is
+        // herdr's unless a configured direct binding or the prefix is on it, as
+        // for paste. Navigate and resize mode keep a mouse selection, so the
+        // key copies there too, but only over a visible selection: otherwise it
+        // is left to that mode's own bindings. Without copy-on-select a
+        // retained selection needs a key to be copied at all, so the key copies
+        // then whatever clipboard_shortcuts says.
+        let selection_visible = self
+            .selection
+            .as_ref()
+            .is_some_and(crate::selection::Selection::is_visible);
+        if (self.mode == ClientShellMode::Terminal
+            || matches!(
+                self.mode,
+                ClientShellMode::Navigate | ClientShellMode::Resize
+            ) && selection_visible)
             && self.copy_or_terminal_mode() != ClientShellMode::Copy
             && (self.config.clipboard_shortcuts || !self.config.copy_on_select)
             && is_retained_selection_copy_key(key)
-            && self
-                .selection
-                .as_ref()
-                .is_some_and(crate::selection::Selection::is_visible)
+            && crate::input::resolve_direct_binding(&self.config.keybinds.keybinds, key).is_none()
+            && !self.config.keybinds.matches_prefix(key)
         {
-            self.request_selection_copy(outcome, true);
-            self.selection = None;
-            self.stop_selection_autoscroll();
-            self.selection_highlight_clear_deadline = None;
-            outcome.repaint = true;
+            // herdr's key whether or not something is selected: a legacy host
+            // sends ctrl+alt+c as ESC 0x03, which a shell would take as an
+            // interrupt.
+            if selection_visible {
+                self.request_selection_copy(outcome, true);
+                self.selection = None;
+                self.stop_selection_autoscroll();
+                self.selection_highlight_clear_deadline = None;
+                outcome.repaint = true;
+            }
             return None;
         }
         if self.mode != ClientShellMode::Copy

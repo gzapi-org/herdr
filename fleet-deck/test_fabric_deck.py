@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import stat
 import tempfile
@@ -6,6 +7,7 @@ import unittest
 
 from deck_tabs import RESTORE_WAIT_S, RESUME, SAME_SESSION_S, SETTLE_S, WAIT, WATCH, Before, Shown
 from fabric_deck import (
+    live_of,
     BOARD_DIR,
     PANE_MAP_REFRESH_S,
     NEW_WORKSPACE,
@@ -1067,6 +1069,18 @@ class StopChild(unittest.TestCase):
         with self.assertRaises(KeyboardInterrupt):
             self.stop(child, grace=0.5, signal_after=0.1)
         self.assertEqual(child.returncode, -signal.SIGKILL, "reaped before the stop is acted on")
+
+
+class UnknownStateTest(unittest.TestCase):
+    def test_a_record_whose_state_is_unknown_is_no_record(self):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        ts = now.isoformat()
+        unreadable = parse_state_line(json.dumps({
+            "address": "h/a", "ts": ts, "state": "unknown", "sessions": [],
+            "why": "the account cannot read its session state"}))
+        idle = parse_state_line(json.dumps({"address": "h/a", "ts": ts, "state": "idle", "sessions": []}))
+        self.assertIsNone(live_of(unreadable, now), "an unreadable account says nothing")
+        self.assertEqual(live_of(idle, now).count, 0, "a readable one with no session says 0")
 
 
 if __name__ == "__main__":

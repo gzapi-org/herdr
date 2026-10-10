@@ -136,7 +136,7 @@ const PANE_MODES: &[(&str, &[u8])] = &[
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum HostProfile {
+pub(super) enum HostProfile {
     /// Kitty keyboard host (Ghostty, kitty, WezTerm, foot...). Herdr pushes 7,
     /// or 31 while the pane wants all keys reported.
     Kitty,
@@ -145,7 +145,7 @@ enum HostProfile {
 }
 
 impl HostProfile {
-    fn name(self) -> &'static str {
+    pub(super) fn name(self) -> &'static str {
         match self {
             Self::Kitty => "kitty-host",
             Self::Legacy => "legacy-host",
@@ -168,6 +168,15 @@ const MODS: [(u16, &str); 4] = [
     (ghostty::MOD_SHIFT, "shift"),
     (ghostty::MOD_SUPER, "super"),
 ];
+
+/// gzapi-org's fork: the keys herdr keeps for its own actions, so they never
+/// reach the pane (harness_keys pins that no harness binds them): ctrl+alt+c
+/// copies, ctrl+alt+p pastes, cmd+c copies where a host forwards it, and
+/// alt+PageUp/PageDown scroll herdr's scrollback where the pane would let it.
+fn forks_herdr_key(mods: &str, key: &str, host_scrollback: bool) -> bool {
+    matches!((mods, key), ("ctrl+alt", "c" | "p") | ("super", "c"))
+        || mods == "alt" && matches!(key, "pageup" | "pagedown") && host_scrollback
+}
 
 fn mods_name(mods: u16) -> String {
     let mut parts: Vec<&str> = MODS
@@ -274,8 +283,8 @@ fn legacy_shell_exception(pane_mode: &[u8], key: &str, mods: u16) -> Option<Vec<
     })
 }
 
-struct HerdrPath {
-    state: ClientShellState,
+pub(super) struct HerdrPath {
+    pub(super) state: ClientShellState,
     framer: crate::raw_input::RawInputByteFramer,
     runtime: crate::terminal::TerminalRuntime,
     rx: tokio::sync::mpsc::Receiver<bytes::Bytes>,
@@ -284,7 +293,7 @@ struct HerdrPath {
 }
 
 impl HerdrPath {
-    fn new(host: HostProfile, app_output: &[u8]) -> Self {
+    pub(super) fn new(host: HostProfile, app_output: &[u8]) -> Self {
         // Mirrors the client: report-all is pushed to the host while the pane
         // asks for it (`HostProfile::setup` picks 31 for those panes).
         let host_reports_all = matches!(app_output, b"\x1b[>11u" | b"\x1b[>15u" | b"\x1b[>31u");
@@ -383,7 +392,7 @@ impl HerdrPath {
 
     /// Feed one host write, then let idle flushes run. Returns None when Herdr
     /// itself consumed the key (prefix, binding, mode change).
-    fn feed(&mut self, host_bytes: &[u8]) -> Option<Vec<u8>> {
+    pub(super) fn feed(&mut self, host_bytes: &[u8]) -> Option<Vec<u8>> {
         let mut chunks = self.framer.push(host_bytes);
         for _ in 0..3 {
             if !self.framer.has_pending_input() {
@@ -553,11 +562,12 @@ fn run_keyboard_conformance() -> Report {
                 }
                 let press = herdr.feed(&host_bytes.0);
                 let release = herdr.feed(&host_bytes.1);
-                let page_key_scrolls_herdr = *mods == 0
-                    && matches!(def.name, "pageup" | "pagedown")
-                    && herdr.runtime.plain_page_keys_use_host_scrollback() == Some(true);
-                let (Some(press), Some(release), false) = (press, release, page_key_scrolls_herdr)
-                else {
+                let fork_key = forks_herdr_key(
+                    &mods_name(*mods),
+                    def.name,
+                    herdr.runtime.plain_page_keys_use_host_scrollback() == Some(true),
+                );
+                let (Some(press), Some(release), false) = (press, release, fork_key) else {
                     report.owned.push(format!(
                         "{}\t{}\t{}+{}",
                         host.name(),
@@ -2061,11 +2071,12 @@ mod windows_records {
                     let expected = [win32_input_mode(press), win32_input_mode(release)].concat();
                     let pressed = deliver_record(&mut herdr, &mut input, press, layout);
                     let released = deliver_record(&mut herdr, &mut input, release, layout);
-                    let page_key_scrolls_herdr = chord.name == "plain"
-                        && matches!(key_name.as_str(), "pageup" | "pagedown")
-                        && herdr.runtime.plain_page_keys_use_host_scrollback() == Some(true);
-                    let (Some(pressed), Some(released), false) =
-                        (pressed, released, page_key_scrolls_herdr)
+                    let fork_key = forks_herdr_key(
+                        chord.name,
+                        key_name.as_str(),
+                        herdr.runtime.plain_page_keys_use_host_scrollback() == Some(true),
+                    );
+                    let (Some(pressed), Some(released), false) = (pressed, released, fork_key)
                     else {
                         tally.herdr_owned += 1;
                         herdr.reset_client();

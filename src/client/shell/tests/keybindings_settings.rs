@@ -44,7 +44,7 @@ fn plus_commands_survive_snapshots_and_reload_for_both_keybinding_sources() {
                     .with_shifted_codepoint('+' as u32),
             ] {
                 let outcome = state.handle_raw_events(vec![
-                    RawInputEvent::Key(TerminalKey::new(KeyCode::Char('b'), KeyModifiers::CONTROL)),
+                    RawInputEvent::Key(TerminalKey::new(KeyCode::Char('6'), KeyModifiers::CONTROL)),
                     RawInputEvent::Key(plus),
                 ]);
                 let [ClientShellAction::Endpoint { request, .. }] = &outcome.actions[..] else {
@@ -350,7 +350,7 @@ detach = "prefix+x"
     state.set_snapshot(Box::new(snapshot()));
     state.set_pane_surface(surface());
 
-    let old_default = state.handle_input_bytes(&[0x02]);
+    let old_default = state.handle_input_bytes(&[0x1e]);
     assert_eq!(
         old_default.requests.len(),
         1,
@@ -386,7 +386,7 @@ fn prefix_endpoint_action_uses_public_api_with_stable_ids() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
     state.set_snapshot(Box::new(snapshot()));
 
-    assert!(state.handle_input_bytes(&[0x02]).actions.is_empty());
+    assert!(state.handle_input_bytes(&[0x1e]).actions.is_empty());
     let create = state.handle_input_bytes(b"c");
     let [ClientShellAction::Endpoint {
         boot_id, request, ..
@@ -934,7 +934,7 @@ fn resize_mode_reuses_endpoint_resize_and_stays_active_until_done() {
     state.set_snapshot(Box::new(snapshot()));
     state.set_pane_surface(surface());
 
-    assert!(state.handle_input_bytes(&[0x02]).actions.is_empty());
+    assert!(state.handle_input_bytes(&[0x1e]).actions.is_empty());
     assert!(state.handle_input_bytes(b"r").actions.is_empty());
     assert_eq!(state.mode, ClientShellMode::Resize);
 

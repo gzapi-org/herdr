@@ -15,13 +15,117 @@ touch it. The contract is agent-fabric's `docs/fleet-deck/tab-states.md`
 (agent-fabric#115). Its state machine is implemented in `deck_tabs.py`,
 and the deck around it in `fabric_deck.py`.
 
+## Start and stop
+
+One command brings the whole deck back, from a fresh terminal on the
+operator's human login:
+
 ```sh
-fabric-deck --catalog ~/projects/agent-fabric/identities/roles/catalog.json
+fleet-deck
 ```
 
-The deck runs on the operator's human login, from a terminal outside any
-pane: `server.socket_access = "outside_panes"` refuses pane processes. It
-stays running until ctrl-c or `kill`, and the stream child goes with it.
+It starts herdr's server if none answers, starts the deck controller if
+none runs, and attaches this terminal to herdr. Run it again, or from a
+second terminal, and it only attaches: the server answers its socket, and
+the controller holds a lock (`$XDG_STATE_HOME/fabric-deck/deck.lock`) that a
+second one cannot take. Detach with **ctrl+6 q**; the deck goes on.
+
+```sh
+fleet-deck status    # the server, the controller, the log, the prefix; exit 0 when both run, 3 otherwise
+fleet-deck stop      # stops the controller (SIGTERM; its state stream goes with it)
+fleet-deck restart   # stops the controller and starts a new one
+fleet-deck start     # starts what is missing, without attaching
+```
+
+- **The controller has no terminal.** It runs in a session of its own, its
+  input is `/dev/null`, and it writes to `$XDG_STATE_HOME/fabric-deck/deck.log`
+  (one line per change, timestamped). Each time a controller starts, a log
+  past 1 MiB is moved to `deck.log.1`; a controller that runs for weeks
+  keeps writing to the same file. Closing a terminal or a herdr tab never
+  reaches it. Only `fleet-deck stop` or `restart` stops it.
+- **`stop` never stops herdr's server.** The server keeps every agent's pane
+  running; `herdr server stop` would end them all. After a server restart the
+  deck restores the tabs (see Restore).
+- **The deck's options** (`--catalog`, `--exclude`, `--cwd`, `--no-fleet-tab`)
+  are given to `fleet-deck` and take effect when it starts the controller;
+  change them with `fleet-deck restart <options>`. The catalogue defaults to
+  the agent-fabric checkout's (`AGENT_FABRIC_ROOT`, else
+  `~/projects/agent-fabric`).
+- **Outside herdr's panes only.** `server.socket_access = "outside_panes"`
+  refuses a pane's processes, so `fleet-deck` refuses to start anything from
+  inside a pane (a herdr popup is the operator's own and may).
+- **Install** once, on the operator's login:
+  `ln -s <this checkout>/fleet-deck/fleet-deck ~/.local/bin/fleet-deck`.
+
+`fabric-deck` is the controller itself; `fleet-deck` starts it. Run in a
+terminal by hand, it still refuses to run beside another deck.
+
+## Keys
+
+Every pane runs a harness, so every key combination reaches it as typed:
+ctrl+c, ctrl+v, ctrl+z, esc, PageUp and PageDown included, whether or not
+something is selected or on the clipboard. herdr keeps only these:
+
+| key | herdr's action |
+|---|---|
+| **ctrl+6** | the prefix: herdr's commands are ctrl+6 then a key (`ctrl+6 q` detaches; the `prefix+f/a/p` keys below); ctrl+6 twice sends ctrl+6 to the pane. A legacy terminal sends it as ctrl+^ (0x1e), which works too. |
+| **ctrl+alt+c** | copies the selection |
+| **ctrl+alt+p** | pastes the clipboard's text into the pane |
+| **cmd+c / cmd+v** | copy (any system) and paste (macOS), where the terminal forwards cmd |
+| **alt+PageUp / alt+PageDown** | scroll herdr's scrollback, when the pane is on its main screen with no mouse reporting (otherwise they reach the pane) |
+| the **mouse** | selection, menus and scrolling |
+
+**Copying and pasting.**
+- A mouse selection is copied as soon as the button is released, and stays
+  highlighted until you click or type. ctrl+alt+c copies it again. The
+  right-click menu has Copy and Paste.
+- `ctrl+6 [` enters copy mode, to select and copy with the keyboard.
+- ctrl+alt+p pastes, and so does the terminal's own paste (ctrl+shift+v in
+  ptyxis, which Qubes' clipboard also uses). Either arrives as a paste in the
+  pane. ctrl+v goes to the harness, which pastes itself (Claude Code reads an
+  image from the clipboard).
+- To scroll, use alt+PageUp/PageDown or the mouse wheel.
+- `[ui] clipboard_shortcuts = false` gives ctrl+alt+p to the pane as well,
+  and ctrl+alt+c unless `copy_on_select = false` (then it is the only key
+  that copies a kept selection). A herdr binding configured on either key
+  wins over it.
+
+**Why these keys.** Each was checked on 2026-10-10 against what the
+harnesses bind, and against what the owner's desktop and terminal keep for
+themselves (herdr never receives those).
+- **Claude Code:** its default keybindings in every context, chords by their
+  first key, and its reserved keys (code.claude.com/docs/en/keybindings).
+- **Codex CLI:** its built-in TUI keymap (openai/codex
+  `codex-rs/tui/src/keymap.rs` at 806d9732). It binds ctrl+alt+v to paste an
+  image, which is why herdr's paste is ctrl+alt+p.
+- **A plain shell:** bash's emacs keymap (`bind -p`), with its ESC-ctrl
+  bindings counted as ctrl+alt (a legacy terminal sends ctrl+alt+x as ESC
+  ctrl+x), and the tty's control characters (`stty -a`).
+- **The desktop:**
+  - dom0's Xfce: ctrl+alt+l and ctrl+alt+Escape;
+  - ptyxis: alt+digits, alt+comma, ctrl(+shift)+PageUp/PageDown and
+    ctrl+shift+c/v;
+  - the Qubes clipboard: ctrl+shift+c/v.
+
+Upstream's prefix, ctrl+b, is Claude Code's "background the task", and
+Codex's and readline's backward-char. Upstream's plain PageUp/PageDown
+scrolling, and this fork's earlier ctrl+c/ctrl+v copy and paste (60764f3f),
+took keys every harness uses.
+
+`src/client/shell/tests/harness_keys.rs` pins all of it:
+- **The lists.** Each harness's keys and the desktop's are written there. The
+  prefix, every default direct binding and herdr's own keys are checked
+  against them, and so are the `prefix+f/a/p` keys below.
+- **Byte for byte.** Through herdr's real input path, the keys a harness uses
+  reach the pane exactly as typed, from a legacy terminal and from a kitty
+  terminal. ctrl+c still does with a visible selection, and ctrl+v with text
+  on the clipboard.
+- **herdr's own keys** never reach the pane.
+- **ctrl+^.** A binding to it is refused beside the ctrl+6 prefix, since a
+  legacy terminal sends both as one byte.
+
+A `keys.prefix` in herdr's config replaces ctrl+6; `fleet-deck` says when it
+is one the check does not cover.
 
 ## Restore
 
@@ -71,12 +175,12 @@ agent's name, so the deck's word goes in its place, and herdr's own
 | moveto has no `--wait` yet, so the harness pane is left at the operator's shell | `unknown` | `unknown` |
 | something other than this account's moveto holds the harness pane | `unknown` | `unknown` |
 | a session runs on the account, not in this pane | `unknown` | `running elsewhere` |
-| the account's record is older than two heartbeats | `unknown` | `stale` |
+| the account's record is older than two heartbeats, or says the account cannot read its session state (`state: unknown`) | `unknown` | `stale` |
 
 The same words are set as herdr state labels, for a sidebar layout that
 shows `state_text`. herdr shows an `idle` the person has not looked at as
-`done`, so the word is set for both. The deck's terminal prints one line
-per change.
+`done`, so the word is set for both. The deck's log prints one line per
+change.
 
 Each harness pane also carries the metadata token `account=<login>`, so
 herdr can tell the accounts apart although every pane reports as

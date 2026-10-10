@@ -220,7 +220,11 @@ def for_this_host(record: StateRecord | None, host: str | None) -> bool:
 
 
 def live_of(record: StateRecord | None, now_utc: datetime.datetime) -> Live | None:
-    if record is None:
+    # A record whose state is "unknown" (the account cannot read its session
+    # state: sessions [] and a fresh ts, agent-fabric #179) says nothing about
+    # sessions. Read as live = 0 it would note a fall, and a session that died
+    # with herdr would not be resumed; it is no record instead.
+    if record is None or record.state == "unknown":
         return None
     posted = parse_utc(record.ts)
     if posted is None:
@@ -377,12 +381,63 @@ def save_befores(path: str, befores: dict[str, Before]) -> None:
     os.replace(tmp, path)
 
 
-def befores_path() -> str:
+def state_dir() -> str:
     state = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
-    return os.path.join(state, "fabric-deck", "before.json")
+    return os.path.join(state, "fabric-deck")
 
 
-# ------------------------------------------------------------- the server
+def befores_path() -> str:
+    return os.path.join(state_dir(), "before.json")
+
+
+def lock_path() -> str:
+    return os.path.join(state_dir(), "deck.lock")
+
+
+def hold_lock(path: str) -> int | None:
+    """The one-deck-per-login lock: a POSIX record lock on `path`, held for
+    the life of the process. None when another deck holds it. A lock, not a
+    pid file, so a deck that died leaves nothing to clean: the kernel drops
+    it with the process. A record lock, not flock, because `lock_holder`
+    can ask the kernel who holds it without taking it: a probe that locked,
+    even shared, would make a deck starting in that instant refuse to run."""
+    import fcntl
+
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
+    try:
+        fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return None
+    # For a person reading the file; lock_holder asks the kernel instead.
+    os.ftruncate(fd, 0)
+    os.write(fd, f"{os.getpid()}\n".encode())
+    return fd
+
+
+# struct flock on Linux: l_type, l_whence, l_start, l_len, l_pid.
+_FLOCK = "hhqqi"
+
+
+def lock_holder(path: str) -> int | None:
+    """The pid of the deck holding the lock, as the kernel reports it
+    (F_GETLK), or None when no deck runs. Takes no lock."""
+    import fcntl
+    import struct
+
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+    except FileNotFoundError:
+        return None
+    try:
+        query = struct.pack(_FLOCK, fcntl.F_WRLCK, os.SEEK_SET, 0, 0, 0)
+        kind, _, _, _, pid = struct.unpack(_FLOCK, fcntl.fcntl(fd, fcntl.F_GETLK, query))
+    finally:
+        # Closing any descriptor of the file drops the record locks this
+        # process holds on it, so the deck itself never calls this.
+        os.close(fd)
+    return None if kind == fcntl.F_UNLCK else pid
 
 
 def herdr_socket_path() -> str | None:
@@ -1300,8 +1355,20 @@ def main(argv: list[str] | None = None) -> int:
                         help="do not open the fleet board as a tab of its own")
     args = parser.parse_args(argv)
 
+    stamped = not sys.stderr.isatty()
+
     def log(line: str) -> None:
-        print(f"fabric-deck: {line}", file=sys.stderr, flush=True)
+        # Detached (fleet-deck start), stderr is the log file: stamp each line.
+        stamp = f"{datetime.datetime.now().astimezone().isoformat(timespec='seconds')} " if stamped else ""
+        print(f"{stamp}fabric-deck: {line}", file=sys.stderr, flush=True)
+
+    lock = hold_lock(lock_path())
+    if lock is None:
+        holder = lock_holder(lock_path())
+        # The holder may have exited between the two calls: say what is known.
+        who = f" (pid {holder})" if holder else ""
+        log(f"another deck held the lock on this login{who}; this one stops")
+        return 1
 
     host = local_host()
     if host is None:

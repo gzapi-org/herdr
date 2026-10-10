@@ -299,9 +299,13 @@ fn apply_client_terminal_input_events(
         match event.to_raw_input_event() {
             crate::raw_input::RawInputEvent::Key(key) => {
                 let key_event = key.as_key_event();
+                // gzapi-org's fork: alt+PageUp/PageDown scroll herdr's
+                // scrollback; plain PageUp/PageDown always reach the pane's
+                // harness. No harness binds the alt variants (client shell
+                // tests, `harness_keys`).
                 if host_page_keys
                     && matches!(key_event.code, KeyCode::PageUp | KeyCode::PageDown)
-                    && key_event.modifiers.is_empty()
+                    && key_event.modifiers == KeyModifiers::ALT
                     && runtime.plain_page_keys_use_host_scrollback() == Some(true)
                 {
                     match key_event.kind {

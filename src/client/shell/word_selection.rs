@@ -149,7 +149,7 @@ impl ClientShellState {
             if self.config.copy_on_select {
                 self.request_selection_copy(outcome, false);
                 // With clipboard shortcuts the word stays highlighted, as a
-                // mouse-release copy does, until Ctrl+C, a click or a key.
+                // mouse-release copy does, until ctrl+alt+c, a click or a key.
                 if !self.config.clipboard_shortcuts {
                     if dragged {
                         self.selection = None;

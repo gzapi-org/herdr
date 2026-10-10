@@ -952,9 +952,9 @@ pub struct UiConfig {
     pub mouse_capture: bool,
     /// Copy text selected with the mouse. Default: true.
     pub copy_on_select: bool,
-    /// Ctrl+C copies a selection and Ctrl+V pastes clipboard text into the
-    /// focused pane; with nothing selected or no text, the key reaches the pane.
-    /// Default: true.
+    /// ctrl+alt+c copies a selection and ctrl+alt+p pastes clipboard text into
+    /// the focused pane (gzapi-org's fork: ctrl+c and ctrl+v always reach the
+    /// pane). Default: true.
     pub clipboard_shortcuts: bool,
     /// Host cursor policy. Default: auto.
     pub host_cursor: HostCursorModeConfig,
@@ -1155,7 +1155,7 @@ pub struct ExperimentalConfig {
 impl Default for KeysConfig {
     fn default() -> Self {
         Self {
-            prefix: BindingConfig::one("ctrl+b"),
+            prefix: BindingConfig::one("ctrl+6"),
             help: BindingConfig::one("prefix+?"),
             settings: BindingConfig::one("prefix+s"),
             new_workspace: BindingConfig::one("prefix+shift+n"),

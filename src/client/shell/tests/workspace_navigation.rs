@@ -42,7 +42,7 @@ fn preview_key(state: &mut ClientShellState, bytes: &[u8]) {
 }
 
 fn enter_navigation(state: &mut ClientShellState) {
-    preview_key(state, &[0x02]);
+    preview_key(state, &[0x1e]);
     preview_key(state, b"w");
     assert_eq!(state.mode, ClientShellMode::Navigate);
 }
@@ -840,7 +840,7 @@ fn directional_pane_focus_releases_an_accepted_workspace_highlight() {
             let mut state = local_navigation_state(false);
             let pending_request = request_local_navigation(&mut state, 2);
             assert_local_highlight(&mut state, "ws_3");
-            preview_key(&mut state, &[0x02]);
+            preview_key(&mut state, &[0x1e]);
             let outcome = state.handle_input_bytes(&[key]);
             let [ClientShellAction::Endpoint { request, .. }] = outcome.actions.as_slice() else {
                 panic!("expected a directional pane focus request");

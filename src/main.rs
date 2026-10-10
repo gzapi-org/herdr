@@ -138,15 +138,15 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # manifest_check = true
 
 [keys]
-# Prefix key to enter prefix mode (default: "ctrl+b")
-# Examples: "ctrl+b", "f12", "esc", "-"
+# Prefix key to enter prefix mode (default: "ctrl+6", the fork's: no agent harness binds it)
+# Examples: "ctrl+6", "f12", "esc", "-"
 # Action bindings use explicit syntax: "prefix+n" requires the prefix;
 # "ctrl+alt+n" is a direct terminal-mode shortcut.
 # Accepted key syntax: plain keys, ctrl/shift/alt/cmd/super modifiers, and special keys like enter/tab/esc/left/right/up/down.
 # Named punctuation such as minus, comma, ampersand, plus, and backtick is also accepted.
 # Most reliable direct bindings are ctrl+letter, function keys, and explicit modified chords.
 # alt+..., cmd/super, and punctuation-with-modifiers may depend on your terminal/tmux setup.
-# prefix = "ctrl+b"
+# prefix = "ctrl+6"
 
 # Prefix-mode actions
 # help = "prefix+?"
@@ -268,14 +268,15 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # mouse_capture = true
 
 # Automatically copy text selected with the mouse.
-# Set false to retain drag or double-click word selection until Ctrl+C,
+# Set false to retain drag or double-click word selection until ctrl+alt+c,
 # or Cmd+C when the host forwards it, copies and clears it.
 # copy_on_select = true
 
-# Ctrl+C copies the selected text and Ctrl+V pastes clipboard text into the
-# focused pane. With nothing selected, Ctrl+C reaches the pane (interrupt);
-# with no text on the clipboard, Ctrl+V does. A selection stays highlighted
-# after it is copied until you click, type or press Ctrl+C.
+# ctrl+alt+c copies the selected text and ctrl+alt+p pastes clipboard text
+# into the focused pane; the right-click menu offers both. ctrl+c and ctrl+v
+# always reach the pane, as do PageUp and PageDown (alt+PageUp/PageDown scroll
+# herdr's scrollback). A selection stays highlighted after it is copied until
+# you click, type or press ctrl+alt+c.
 # clipboard_shortcuts = true
 
 # Host cursor policy: "auto", "native", or "drawn".

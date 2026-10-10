@@ -11,7 +11,13 @@ use crate::popup_size::PopupSize;
 pub type KeyCombo = (KeyCode, KeyModifiers);
 
 /// Built-in prefix used when `keys.prefix` is unset or invalid.
-pub(crate) const DEFAULT_PREFIX: KeyCombo = (KeyCode::Char('b'), KeyModifiers::CONTROL);
+///
+/// gzapi-org's fork: ctrl+6, not upstream's ctrl+b. Every pane here runs a
+/// coding-agent harness, and ctrl+b is Claude Code's "background the task",
+/// Codex's and readline's backward-char. ctrl+6 is bound by none of them, nor
+/// by the tty (`harness_keys` in the client shell tests pins the list checked).
+/// A legacy host sends it as 0x1e, which parses as ctrl+^ and matches too.
+pub(crate) const DEFAULT_PREFIX: KeyCombo = (KeyCode::Char('6'), KeyModifiers::CONTROL);
 
 #[derive(Debug, Clone)]
 pub struct LiveKeybindConfig {
@@ -464,12 +470,16 @@ impl BindingRegistry {
         let combos = self.prefix_combos.clone();
         for combo in combos {
             self.reserve_direct(combo, field, source);
+            if let Some(twin) = legacy_twin(combo) {
+                self.reserve_direct(twin, field, source);
+            }
         }
     }
 
     fn prefix_rhs_is_reserved(&self, combo: KeyCombo) -> bool {
         let combo = normalize_key_combo(combo);
         self.prefix_combos.contains(&combo)
+            || legacy_twin(combo).is_some_and(|twin| self.prefix_combos.contains(&twin))
     }
 
     fn conflict(&self, binding: &ResolvedBinding) -> Option<&RegisteredBinding> {
@@ -1453,6 +1463,41 @@ fn key_parts_match_combo(
             expected_code,
             expected_modifiers,
         )
+        || legacy_ctrl_six_matches(
+            actual_code,
+            actual_modifiers,
+            expected_code,
+            expected_modifiers,
+        )
+}
+
+/// The key a legacy host sends as the same byte: ctrl+6 and ctrl+^ are both
+/// 0x1e. Binding one reserves the other, or a binding to the twin would
+/// shadow it there without a diagnostic.
+fn legacy_twin(combo: KeyCombo) -> Option<KeyCombo> {
+    match combo {
+        (KeyCode::Char('6'), KeyModifiers::CONTROL) => {
+            Some((KeyCode::Char('^'), KeyModifiers::CONTROL))
+        }
+        (KeyCode::Char('^'), KeyModifiers::CONTROL) => {
+            Some((KeyCode::Char('6'), KeyModifiers::CONTROL))
+        }
+        _ => None,
+    }
+}
+
+/// A legacy host has one byte, 0x1e, for ctrl+6 and ctrl+^, and it parses as
+/// ctrl+^; a binding to ctrl+6 must still see it there.
+fn legacy_ctrl_six_matches(
+    actual_code: KeyCode,
+    actual_modifiers: KeyModifiers,
+    expected_code: KeyCode,
+    expected_modifiers: KeyModifiers,
+) -> bool {
+    actual_code == KeyCode::Char('^')
+        && expected_code == KeyCode::Char('6')
+        && actual_modifiers == KeyModifiers::CONTROL
+        && expected_modifiers == KeyModifiers::CONTROL
 }
 
 fn key_codes_match(
@@ -2296,6 +2341,10 @@ switch_workspace = "prefix+shift+1..9"
     fn legacy_indexed_user_bindings_displace_modern_defaults() {
         let config: Config = toml::from_str(
             r#"
+# ctrl+6 is the default prefix here: keep all nine digits free.
+[keys]
+prefix = "ctrl+b"
+
 [keys.indexed]
 workspaces = "ctrl"
 "#,

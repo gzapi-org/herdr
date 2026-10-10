@@ -213,7 +213,7 @@ fn popup_owns_keys_text_paste_and_mouse_before_shell_controls() {
     state.set_pane_surface(surface_with_popup());
     state.compose(106, 20).expect("popup frame");
 
-    for bytes in [b"x".as_slice(), b"\x02".as_slice(), b"\x1b".as_slice()] {
+    for bytes in [b"x".as_slice(), b"\x1e".as_slice(), b"\x1b".as_slice()] {
         let input = state.handle_input_bytes(bytes);
         assert!(matches!(
             &input.requests[..],
@@ -381,7 +381,7 @@ fn prefix_input_source_changes_are_client_owned_and_focus_safe() {
     state.set_pane_surface(surface());
     assert!(state.take_input_source_changes().is_empty());
 
-    let prefix = crate::input::TerminalKey::new(KeyCode::Char('b'), KeyModifiers::CONTROL);
+    let prefix = crate::input::TerminalKey::new(KeyCode::Char('6'), KeyModifiers::CONTROL);
     state.handle_raw_events(vec![RawInputEvent::Key(prefix)]);
     assert_eq!(state.take_input_source_changes(), vec![true]);
 
@@ -394,7 +394,7 @@ fn prefix_input_source_changes_are_client_owned_and_focus_safe() {
     assert_eq!(state.take_input_source_changes(), vec![false]);
 
     state.handle_raw_events(vec![RawInputEvent::Key(crate::input::TerminalKey::new(
-        KeyCode::Char('b'),
+        KeyCode::Char('6'),
         KeyModifiers::CONTROL,
     ))]);
     assert_eq!(state.take_input_source_changes(), vec![true]);

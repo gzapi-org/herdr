@@ -263,7 +263,7 @@ prefix = "ctrl+"
         let profile = config.local_keybindings_profile_toml().unwrap();
         let keybinds = keybindings_from_profile_toml(&profile).unwrap();
 
-        assert!(profile.contains("prefix = \"ctrl+b\""));
+        assert!(profile.contains("prefix = \"ctrl+6\""));
         assert_eq!(keybinds.prefix, config.prefix_keys());
     }
 
@@ -348,6 +348,10 @@ prefix = "n"
     fn local_keybindings_profile_preserves_legacy_indexed_tab_source() {
         let config: Config = toml::from_str(
             r#"
+# ctrl+6 is the default prefix here: keep all nine digits free.
+[keys]
+prefix = "ctrl+b"
+
 [keys.indexed]
 tabs = "ctrl"
 "#,

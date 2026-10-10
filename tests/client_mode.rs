@@ -1333,7 +1333,7 @@ fn client_shell_detaches_restores_and_freshly_reattaches_to_current_state() {
         .expect("first client shell PTY")
         .take_writer()
         .expect("first client shell writer")
-        .write_all(b"\x02q")
+        .write_all(b"\x1eq")
         .expect("detach first client shell");
     let detach_output = drain_until_client_exits(&mut client_a, &output_a, detach_watermark);
     assert!(

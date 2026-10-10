@@ -83,19 +83,48 @@ fn a_mouse_selection_stays_highlighted_after_it_is_copied() {
         .is_some_and(crate::selection::Selection::is_visible));
 }
 
+fn ctrl_alt(code: char) -> crate::input::TerminalKey {
+    crate::input::TerminalKey::new(
+        KeyCode::Char(code),
+        KeyModifiers::CONTROL | KeyModifiers::ALT,
+    )
+}
+
 #[test]
-fn ctrl_c_copies_a_visible_selection_instead_of_interrupting() {
+fn ctrl_alt_c_copies_a_visible_selection() {
+    let mut state = shortcuts_state(true);
+    select_in_pane_1(&mut state);
+
+    let outcome = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('c'))]);
+
+    assert!(requests_selection_read(&outcome));
+    assert!(
+        !forwards_a_key(&outcome, "pane_1"),
+        "herdr's copy key stays herdr's"
+    );
+    assert!(state.selection.is_none(), "the copy clears the highlight");
+}
+
+#[test]
+fn ctrl_alt_c_without_a_selection_reaches_nothing() {
+    // A legacy host sends it as ESC 0x03: forwarded, a shell would interrupt.
+    let mut state = shortcuts_state(true);
+
+    let outcome = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('c'))]);
+
+    assert!(!requests_selection_read(&outcome));
+    assert!(!forwards_a_key(&outcome, "pane_1"));
+}
+
+#[test]
+fn ctrl_c_reaches_the_pane_even_over_a_visible_selection() {
     let mut state = shortcuts_state(true);
     select_in_pane_1(&mut state);
 
     let outcome = state.handle_raw_events(vec![RawInputEvent::Key(key('c'))]);
 
-    assert!(requests_selection_read(&outcome));
-    assert!(
-        !forwards_a_key(&outcome, "pane_1"),
-        "Ctrl+C must not reach the pane"
-    );
-    assert!(state.selection.is_none(), "the copy clears the highlight");
+    assert!(!requests_selection_read(&outcome));
+    assert!(forwards_a_key(&outcome, "pane_1"));
 }
 
 #[test]
@@ -109,23 +138,40 @@ fn ctrl_c_without_a_selection_reaches_the_pane() {
 }
 
 #[test]
-fn ctrl_v_pastes_clipboard_text_into_the_focused_pane_once_while_held() {
+fn ctrl_alt_p_pastes_clipboard_text_into_the_focused_pane_once_while_held() {
     let mut state = shortcuts_state(true);
     state.read_clipboard_text = || Some("cargo test\n".to_owned());
 
-    let press = state.handle_raw_events(vec![RawInputEvent::Key(key('v'))]);
+    let press = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('p'))]);
     assert_eq!(pasted(&press, "pane_1").as_deref(), Some("cargo test\n"));
     assert!(!forwards_a_key(&press, "pane_1"));
 
     let repeat = state.handle_raw_events(vec![RawInputEvent::Key(
-        key('v').with_kind(crossterm::event::KeyEventKind::Repeat),
+        ctrl_alt('p').with_kind(crossterm::event::KeyEventKind::Repeat),
     )]);
-    assert!(repeat.requests.is_empty(), "holding Ctrl+V pastes once");
+    assert!(repeat.requests.is_empty(), "holding the key pastes once");
 }
 
 #[test]
-fn ctrl_v_reaches_the_pane_when_the_clipboard_has_no_text() {
+fn ctrl_alt_p_with_no_clipboard_text_reaches_nothing() {
     for reader in [(|| None) as fn() -> Option<String>, || Some(String::new())] {
+        let mut state = shortcuts_state(true);
+        state.read_clipboard_text = reader;
+
+        let outcome = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('p'))]);
+
+        assert!(pasted(&outcome, "pane_1").is_none());
+        assert!(!forwards_a_key(&outcome, "pane_1"));
+    }
+}
+
+#[test]
+fn ctrl_v_reaches_the_pane_whatever_the_clipboard_holds() {
+    for reader in [
+        (|| None) as fn() -> Option<String>,
+        || Some(String::new()),
+        || Some("text".to_owned()),
+    ] {
         let mut state = shortcuts_state(true);
         state.read_clipboard_text = reader;
 
@@ -137,18 +183,16 @@ fn ctrl_v_reaches_the_pane_when_the_clipboard_has_no_text() {
 }
 
 #[test]
-fn turning_clipboard_shortcuts_off_restores_upstream_keys() {
+fn turning_clipboard_shortcuts_off_gives_their_keys_to_the_pane() {
     let mut state = shortcuts_state(false);
     state.read_clipboard_text = || Some("text".to_owned());
 
-    let paste = state.handle_raw_events(vec![RawInputEvent::Key(key('v'))]);
+    let paste = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('p'))]);
     assert!(pasted(&paste, "pane_1").is_none());
     assert!(forwards_a_key(&paste, "pane_1"));
 
-    // With copy_on_select (the default) a retained selection is not upstream's,
-    // so Ctrl+C interrupts even over a visible selection.
     select_in_pane_1(&mut state);
-    let copy = state.handle_raw_events(vec![RawInputEvent::Key(key('c'))]);
+    let copy = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('c'))]);
     assert!(!requests_selection_read(&copy));
     assert!(forwards_a_key(&copy, "pane_1"));
 }
@@ -249,15 +293,15 @@ fn the_menus_paste_says_so_when_there_is_nothing_to_paste() {
 }
 
 #[test]
-fn a_configured_ctrl_v_binding_wins_over_the_paste_shortcut() {
+fn a_configured_ctrl_alt_p_binding_wins_over_the_paste_shortcut() {
     let mut config = Config::default();
-    config.keys.zoom = crate::config::BindingConfig::One("ctrl+v".to_owned());
+    config.keys.zoom = crate::config::BindingConfig::One("ctrl+alt+p".to_owned());
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
     state.set_snapshot(Box::new(snapshot()));
     state.set_pane_surface(surface());
     state.read_clipboard_text = || Some("must not paste".to_owned());
 
-    let outcome = state.handle_raw_events(vec![RawInputEvent::Key(key('v'))]);
+    let outcome = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('p'))]);
 
     assert!(pasted(&outcome, "pane_1").is_none());
     assert!(
@@ -293,4 +337,123 @@ fn the_menus_paste_clears_the_selection_as_a_host_paste_does() {
 
     assert_eq!(pasted(&outcome, "pane_1").as_deref(), Some("ls"));
     assert!(state.selection.is_none());
+}
+
+#[test]
+fn without_copy_on_select_ctrl_alt_c_copies_a_retained_selection_even_with_shortcuts_off() {
+    let mut config = Config::default();
+    config.ui.clipboard_shortcuts = false;
+    config.ui.copy_on_select = false;
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    select_in_pane_1(&mut state);
+
+    let outcome = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('c'))]);
+
+    assert!(
+        requests_selection_read(&outcome),
+        "the selection has no other key"
+    );
+    assert!(!forwards_a_key(&outcome, "pane_1"));
+}
+
+#[test]
+fn a_configured_ctrl_alt_c_binding_wins_over_the_copy_key() {
+    let mut config = Config::default();
+    config.keys.zoom = crate::config::BindingConfig::One("ctrl+alt+c".to_owned());
+    assert!(config.collect_diagnostics().is_empty());
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    select_in_pane_1(&mut state);
+
+    let outcome = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('c'))]);
+
+    assert!(
+        !requests_selection_read(&outcome),
+        "the binding took the key"
+    );
+    assert!(!outcome.actions.is_empty(), "the binding ran");
+}
+
+#[test]
+fn ctrl_alt_c_after_the_prefix_is_the_prefix_commands_key() {
+    let mut state = shortcuts_state(true);
+    state.handle_raw_events(vec![RawInputEvent::Key(crate::input::TerminalKey::new(
+        KeyCode::Char('6'),
+        KeyModifiers::CONTROL,
+    ))]);
+    assert_eq!(state.mode, ClientShellMode::Prefix);
+    // Pressing the prefix clears a selection; make one visible after it.
+    select_in_pane_1(&mut state);
+
+    let outcome = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('c'))]);
+
+    assert!(!requests_selection_read(&outcome));
+    assert_ne!(state.mode, ClientShellMode::Prefix, "prefix mode ended");
+}
+
+#[test]
+fn a_prefix_on_ctrl_alt_c_enters_prefix_mode() {
+    let config: Config = toml::from_str("[keys]\nprefix = \"ctrl+alt+c\"\n").expect("parses");
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    select_in_pane_1(&mut state);
+
+    let outcome = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('c'))]);
+
+    assert!(!requests_selection_read(&outcome));
+    assert_eq!(state.mode, ClientShellMode::Prefix);
+}
+
+#[test]
+fn ctrl_alt_c_copies_a_selection_dragged_in_navigate_mode() {
+    let mut state = shortcuts_state(true);
+    state.compose(106, 20).expect("composed frame");
+    state.mode = ClientShellMode::Navigate;
+    let pane = state.hits.panes[0].clone();
+    let at = |column_offset: u16, kind| {
+        RawInputEvent::Mouse(crossterm::event::MouseEvent {
+            kind,
+            column: pane.inner_rect.x + column_offset,
+            row: pane.inner_rect.y,
+            modifiers: KeyModifiers::empty(),
+        })
+    };
+    state.handle_raw_events(vec![at(0, MouseEventKind::Down(MouseButton::Left))]);
+    state.handle_raw_events(vec![at(2, MouseEventKind::Drag(MouseButton::Left))]);
+    state.handle_raw_events(vec![at(2, MouseEventKind::Up(MouseButton::Left))]);
+    assert_eq!(state.mode, ClientShellMode::Navigate);
+    assert!(state
+        .selection
+        .as_ref()
+        .is_some_and(crate::selection::Selection::is_visible));
+
+    let outcome = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('c'))]);
+
+    assert!(
+        requests_selection_read(&outcome),
+        "the selection was copied, not dropped"
+    );
+}
+
+#[test]
+fn in_navigate_mode_with_nothing_selected_a_navigate_binding_keeps_ctrl_alt_c() {
+    let config: Config =
+        toml::from_str("[keys]\nnavigate_workspace_up = \"ctrl+alt+c\"\n").expect("parses");
+    assert!(config.collect_diagnostics().is_empty());
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    state.mode = ClientShellMode::Navigate;
+
+    let outcome = state.handle_raw_events(vec![RawInputEvent::Key(ctrl_alt('c'))]);
+
+    assert!(!requests_selection_read(&outcome));
+    assert!(
+        outcome.repaint || !outcome.actions.is_empty() || !outcome.requests.is_empty(),
+        "the navigate binding handled the key"
+    );
 }

@@ -314,7 +314,7 @@ fn startup_onboarding_is_client_rendered_and_modal() {
         .join("\n");
     assert!(text.contains("terminal workspace manager for coding agents"));
     assert!(text.contains("this is a mouse-first terminal"));
-    assert!(text.contains("ctrl+b enters prefix mode"));
+    assert!(text.contains("ctrl+6 enters prefix mode"));
     assert!(text.contains("install optional agent integrations"));
     assert_eq!(state.hits.overlay_primary.width, 12);
 
